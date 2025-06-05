@@ -1,0 +1,70 @@
+name: Deploy and Build on GPU EC2
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infrastructure/gpu-instance.yml \
+            --stack-name pytorch3d-gpu-builder \
+            --parameter-overrides \
+              KeyName=${{ secrets.EC2_KEY_NAME }} \
+              InstanceType=g4dn.xlarge \
+            --capabilities CAPABILITY_IAM
+
+      - name: Get EC2 instance public IP
+        id: get-ip
+        run: |
+          INSTANCE_ID=$(aws cloudformation describe-stacks \
+            --stack-name pytorch3d-gpu-builder \
+            --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" \
+            --output text)
+          PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-ids $INSTANCE_ID \
+            --query "Reservations[0].Instances[0].PublicIpAddress" \
+            --output text)
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_OUTPUT
+
+      - name: Wait for instance to be ready
+        run: sleep 60
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+
+      - name: Copy code to EC2 instance
+        run: |
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem -r ./* ec2-user@${{ steps.get-ip.outputs.PUBLIC_IP }}:~/pytorch3d-app/
+
+      - name: Build Docker image on GPU instance
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ec2-user@${{ steps.get-ip.outputs.PUBLIC_IP }} "cd ~/pytorch3d-app && \
+          sudo docker build -t pytorch3d-app:latest ."
+
+      - name: Push Docker image to ECR (optional)
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ec2-user@${{ steps.get-ip.outputs.PUBLIC_IP }} "cd ~/pytorch3d-app && \
+          aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY_URI }} && \
+          sudo docker tag pytorch3d-app:latest ${{ secrets.ECR_REPOSITORY_URI }}:latest && \
+          sudo docker push ${{ secrets.ECR_REPOSITORY_URI }}:latest"

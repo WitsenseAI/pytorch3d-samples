@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for GPU EC2 instance for Docker builds'
+
+Parameters:
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: g4dn.xlarge
+    AllowedValues:
+      - g4dn.xlarge
+      - g4dn.2xlarge
+      - g5.xlarge
+      - p3.2xlarge
+    ConstraintDescription: Must be a valid GPU instance type
+
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair
+
+Resources:
+  BuilderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonECR-FullAccess
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  BuilderInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BuilderRole
+
+  BuilderSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for GPU builder instance
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  GPUInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      SecurityGroups:
+        - !Ref BuilderSecurityGroup
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref BuilderInstanceProfile
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum update -y
+          amazon-linux-extras install docker -y
+          systemctl start docker
+          systemctl enable docker
+          usermod -a -G docker ec2-user
+          
+          # Install NVIDIA drivers and container toolkit
+          distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+          curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+          curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+          yum update -y
+          yum install -y nvidia-container-toolkit
+          systemctl restart docker
+          
+          # Create directory for app
+          mkdir -p /home/ec2-user/pytorch3d-app
+          chown ec2-user:ec2-user /home/ec2-user/pytorch3d-app
+      Tags:
+        - Key: Name
+          Value: PyTorch3D-GPU-Builder
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0c7217cdde317cfec  # Deep Learning AMI GPU PyTorch 2.0.1 (Amazon Linux 2)
+    us-east-2:
+      AMI: ami-0aeb7c931a5a61206
+    us-west-1:
+      AMI: ami-0a0a0d0fb5c9e3df2
+    us-west-2:
+      AMI: ami-0c3fd0f5d33134a76
+    eu-west-1:
+      AMI: ami-0d527b8c289b4af7f
+
+Outputs:
+  InstanceId:
+    Description: ID of the EC2 instance
+    Value: !Ref GPUInstance
+  PublicIP:
+    Description: Public IP address of the EC2 instance
+    Value: !GetAtt GPUInstance.PublicIp
