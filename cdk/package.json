@@ -1,0 +1,11 @@
+{
+  "name": "gpu-batch-cdk",
+  "version": "1.0.0",
+  "description": "AWS Batch with GPU support",
+  "scripts": {
+    "cdk": "node_modules/.bin/cdk"
+  },
+  "dependencies": {
+    "aws-cdk": "^2.0.0"
+  }
+}
