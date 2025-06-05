@@ -1,8 +1,6 @@
 name: Deploy and Build on GPU EC2
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
