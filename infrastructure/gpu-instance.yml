@@ -30,7 +30,7 @@ Resources:
               Service: ec2.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonECR-FullAccess
+        - arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilderECRContainerBuilds
         - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
 
   BuilderInstanceProfile:

@@ -42,3 +42,4 @@ input/*
 # OS
 .DS_Store
 Thumbs.db
+cdk/github-actions-ec2-key.pem
