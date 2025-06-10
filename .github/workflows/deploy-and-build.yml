@@ -48,6 +48,7 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}"
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
           # Add debugging to verify key content
