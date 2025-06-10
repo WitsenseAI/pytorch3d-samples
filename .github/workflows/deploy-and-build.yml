@@ -48,12 +48,21 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}"
+          # Check if the secret starts and ends with proper PEM format
+          if [[ "${{ secrets.EC2_SSH_KEY }}" == "-----BEGIN RSA PRIVATE KEY-----"* && "${{ secrets.EC2_SSH_KEY }}" == *"-----END RSA PRIVATE KEY-----" ]]; then
+            echo "SSH key appears to be in the correct PEM format"
+          else
+            echo "WARNING: SSH key does not appear to be in the correct PEM format"
+          fi
+          
+          # Save key to file
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
-          # Add debugging to verify key content
+          
+          # Print key fingerprint (safe way to verify the key)
           echo "Key fingerprint:"
-          ssh-keygen -lf ~/.ssh/ec2_key.pem
+          ssh-keygen -lf ~/.ssh/ec2_key.pem || echo "Failed to get key fingerprint - invalid key format"
+          
           # Add host key checking bypass
           echo "StrictHostKeyChecking no" > ~/.ssh/config
           echo "UserKnownHostsFile /dev/null" >> ~/.ssh/config
@@ -61,6 +70,10 @@ jobs:
 
       - name: Copy code to EC2 instance
         run: |
+          # Test SSH connection first with verbose output
+          ssh -v -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ec2-user@${{ steps.get-ip.outputs.PUBLIC_IP }} "echo 'SSH connection successful'"
+          
+          # If SSH test succeeds, copy the files
           scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem -r ./* ec2-user@${{ steps.get-ip.outputs.PUBLIC_IP }}:~/pytorch3d-app/
 
       - name: Build Docker image on GPU instance
