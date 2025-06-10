@@ -50,6 +50,13 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
+          # Add debugging to verify key content
+          echo "Key fingerprint:"
+          ssh-keygen -lf ~/.ssh/ec2_key.pem
+          # Add host key checking bypass
+          echo "StrictHostKeyChecking no" > ~/.ssh/config
+          echo "UserKnownHostsFile /dev/null" >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
 
       - name: Copy code to EC2 instance
         run: |
