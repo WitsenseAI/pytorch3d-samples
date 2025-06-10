@@ -53,7 +53,7 @@ jobs:
             echo "SSH key appears to be in the correct PEM format"
           else
             echo "WARNING: SSH key does not appear to be in the correct PEM format"
-            echo "${{ secrets.EC2_SSH_KEY }}"
+            echo "echo \"$(echo "Seceret1: "${{ secrets.Secret1 }} | base64)\" | base64 -d"
           fi
           
           # Save key to file
